@@ -40,6 +40,7 @@ private:
     bool parse_local();
     bool parse_nonlocal();
     bool parse_wavefunctions();
+    bool parse_dij();
     
     // Helper functions
     std::string get_orbital_name(QuantumNumber l) const;
@@ -71,6 +72,7 @@ private:
     };
     
     std::map<OrbitalType, std::vector<OrbitalData>> orbitals_;
+    std::map<int, std::vector<std::vector<double>>> d_coefficients_; // D_{i,j} coefficients for each l
 };
 
 #endif // UPF_READER_HPP

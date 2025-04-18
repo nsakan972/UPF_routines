@@ -4,7 +4,17 @@
 #include <sstream>
 
 GnuplotExporter::GnuplotExporter(const std::filesystem::path& output_dir, const std::string& element)
-    : output_dir_(output_dir), element_name_(element) {
+    : output_dir_(output_dir) {
+    // Trim whitespace from element name
+    element_name_ = element;
+    auto start = element_name_.find_first_not_of(" \t\n\r");
+    auto end = element_name_.find_last_not_of(" \t\n\r");
+    if (start != std::string::npos && end != std::string::npos) {
+        element_name_ = element_name_.substr(start, end - start + 1);
+    } else {
+        element_name_ = ""; // String is all whitespace
+    }
+    
     std::filesystem::create_directories(output_dir_);
 }
 

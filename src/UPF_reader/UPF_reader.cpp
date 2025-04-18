@@ -27,8 +27,12 @@ bool UPFReader::parse() {
         return false;
     }
 
+    // Clear D coefficients
+    d_coefficients_.clear();
+
     // Parse different sections
-    if (!parse_header() || !parse_mesh() || !parse_local() || !parse_nonlocal() || !parse_wavefunctions()) {
+    if (!parse_header() || !parse_mesh() || !parse_local() || !parse_nonlocal() || 
+        !parse_wavefunctions() || !parse_dij()) {
         return false;
     }
 
@@ -64,12 +68,25 @@ bool UPFReader::parse() {
     // Calculate total potentials for each orbital momentum
     g_total_potentials.clear();
     for (const auto& [l, nonlocal_pot] : g_nonlocal_potentials) {
-        const auto& projector = g_projectors[l];
-        std::vector<double> total_potential(g_r_mesh.size());
+        const auto& projector_values = g_projectors[l];
+        std::vector<double> total_potential(g_r_mesh.size(), 0.0);
         
-        // V_l^total(r) = V_local(r) + V_l^nonlocal(r) * P_l(r)
-        for (size_t i = 0; i < g_r_mesh.size(); ++i) {
-            total_potential[i] = g_local_potential[i] + nonlocal_pot[i] * projector[i];
+        // Get number of projectors for this l
+        size_t n_proj = d_coefficients_[l].size();
+        size_t points_per_proj = projector_values.size() / n_proj;
+        
+        // V_l^total(r) = V_local(r) + Σ_{i,j} D_{i,j} P_{l,i}(r) P_{l,j}(r)
+        for (size_t r = 0; r < g_r_mesh.size(); ++r) {
+            total_potential[r] = g_local_potential[r];
+            
+            // Add the nonlocal contribution using D coefficients
+            for (size_t i = 0; i < n_proj; ++i) {
+                for (size_t j = 0; j < n_proj; ++j) {
+                    total_potential[r] += d_coefficients_[l][i][j] * 
+                                          projector_values[i * points_per_proj + r] * 
+                                          projector_values[j * points_per_proj + r];
+                }
+            }
         }
         
         g_total_potentials[l] = std::move(total_potential);
@@ -293,6 +310,47 @@ std::vector<double> UPFReader::get_projector(QuantumNumber l) const {
     return std::vector<double>();
 }
 
+bool UPFReader::parse_dij() {
+    pugi::xml_node dij = doc_.child("UPF").child("PP_NONLOCAL").child("PP_DIJ");
+    if (!dij) {
+        std::cerr << "Error: PP_DIJ section not found\n";
+        return false;
+    }
+
+    std::string dij_str = dij.text().get();
+    std::istringstream iss(dij_str);
+    
+    // Initialize D coefficients matrix for each l
+    for (int l = 0; l <= header_.l_max; ++l) {
+        size_t n_proj = 0;
+        // Count projectors for this l
+        for (const auto& orbital : orbitals_[OrbitalType::NONLOCAL]) {
+            if (orbital.l == static_cast<QuantumNumber>(l)) {
+                n_proj++;
+            }
+        }
+        
+        // Initialize matrix
+        std::vector<std::vector<double>> d_matrix(n_proj, std::vector<double>(n_proj));
+        
+        // Read D coefficients
+        for (size_t i = 0; i < n_proj; ++i) {
+            for (size_t j = 0; j < n_proj; ++j) {
+                double value;
+                if (!(iss >> value)) {
+                    std::cerr << "Error: Not enough D coefficients in PP_DIJ\n";
+                    return false;
+                }
+                d_matrix[i][j] = value;
+            }
+        }
+        
+        d_coefficients_[l] = std::move(d_matrix);
+    }
+
+    return true;
+}
+
 void UPFReader::calculate_potentials() {
     // Store local potential
     g_local_potential = get_local_potential();
@@ -301,6 +359,16 @@ void UPFReader::calculate_potentials() {
     for (int l = 0; l <= header_.l_max; ++l) {
         auto qn = static_cast<QuantumNumber>(l);
         g_nonlocal_potentials[static_cast<int>(qn)] = get_nonlocal_potential(qn);
-        g_projectors[static_cast<int>(qn)] = get_projector(qn);
+        
+        // Get all projectors for this l and combine them into a single vector
+        std::vector<double> combined_projectors;
+        for (const auto& orbital : orbitals_[OrbitalType::NONLOCAL]) {
+            if (orbital.l == qn) {
+                combined_projectors.insert(combined_projectors.end(), 
+                                        orbital.projector.begin(), 
+                                        orbital.projector.end());
+            }
+        }
+        g_projectors[static_cast<int>(qn)] = std::move(combined_projectors);
     }
 }

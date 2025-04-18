@@ -86,13 +86,13 @@ include_directories(
     ${pugixml_SOURCE_DIR}/src
     )
 
-add_executable(Optical_properties ${SOURCE_FILES})
+add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 # Link libraries
 if(wxWidgets_FOUND)
-    target_link_libraries(Optical_properties PRIVATE ${wxWidgets_LIBRARIES})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${wxWidgets_LIBRARIES})
 else()
-    target_link_libraries(Optical_properties PRIVATE
+    target_link_libraries(${PROJECT_NAME} PRIVATE
         wx::core
         wx::base
         wx::aui
@@ -100,5 +100,5 @@ else()
 endif()
 
 # Link GSL
-target_link_libraries(Optical_properties PRIVATE GSL::gsl GSL::gslcblas)
+target_link_libraries(${PROJECT_NAME} PRIVATE GSL::gsl GSL::gslcblas)
 
